@@ -1,0 +1,232 @@
+
+
+
+          Installation de zero
+
+Dans le bios -> iDrac -> network -> Enable NIC
+                                 -> IPV2
+                                 -> IPMI
+                      -> User Config
+on peut configurer aussi via linux avec 
+ipmitool -I open shell
+	ipmitool -I open lan set 1 ipsrc static
+        ipmitool -I open lan set 1 ipaddr 192.168.12.x
+        ipmitool -I open lan set 1 defgw ipaddr 192.168.12.1
+        ipmitool -I open lan set 1 netmask 255.255.255.0
+        ipmitool -I open lan set 1 access on
+        ipmitool -I open user set password 
+        ipmitool -I open lan print 1
+
+pour tester
+ipmitool  -H 192.168.12.4 -U root -P root2014root -I lanplus  shell
+
+
+Installation Partir du DVD Centos 7
+     Language English US
+     Date Paris
+     Keyboard french 
+     Software selection: Virtual Host -> Virtual Platform
+     Network  (IP, Mask, GW, DNS, domain) then activate
+     Installation destination: I will configure partion manual -> automatique 
+             (delete /home,   adjust / and swap to 6GB)
+     Configure password
+
+ 
+
+vi /etc/resolv.conf
+vi /etc/selinux/config
+vi /root/.bashrc
+
+#  JME
+export LANG=C
+unalias egrep 2>/dev/null
+unalias fgrep 2>/dev/null
+unalias grep 2>/dev/null
+alias l.='ls -d .*'
+alias ll='ls -l'
+unalias ls 2>/dev/null
+#
+
+
+yum install qemu-kvm qemu-img virt-manager libvirt libvirt-python libvirt-client virt-install virt-viewer bridge-utils mailx rsync mailx lm_sensors
+systemctl enable libvirtd
+systemctl start libvirtd
+rm /etc/libvirt/qemu/networks/autostart/default.xml
+yum install xorg-x11-xauth virt-manager ipmitool ntp autofs samba samba-client cifs-utils iotop wget net-tools
+systemctl enable ntpd
+systemctl start ntpd
+pour tester
+ntpq -p  
+
+systemctl mask firewalld
+systemctl stop NetworkManager
+vi /etc/sysconfig/network-scripts/ifcfg-em1    (BRIDGE="br0")
+vi /etc/sysconfig/network-scripts/ifcfg-br0
+DEVICE="br0"
+ONBOOT="yes"
+TYPE="Bridge"
+BOOTPROTO="static"
+IPADDR0="192.168.3.X"
+PREFIX0="23"
+GATEWAY0="192.168.3.1"
+DNS1="192.168.3.1"
+DOMAIN="everteam.com"
+
+
+
+fdisk /dev/sda     -> sda3  -> type 8e  (LMinux LVM)
+yum update
+reboot
+pvcreate /dev/sda3
+vgcreate vg /dev/sda3
+
+
+mkdir -p /mnt/backup/dsk /mnt/backup/hid /mnt/backup/smb /home/backup
+
+Pour le disque de sauvegarde interne
+fdisk /dev/sdb  
+mkfs -t xfs /dev/sdb1
+vi /etc/fstab
+add   
+/dev/sdb1       /mnt/backup/dsk xfs     defaults        1 0
+
+
+
+pour le disque de suavegarde USB
+vi /etc/auto.master   add /mnt/backup/hid /etc/auto.misc  --timeout=10
+vi /etc/auto.misc         add usb             -fstype=ext3            :/dev/sdc1
+systemctl restart autofs
+systemctl enable autofs
+
+pour le partage samba
+vi /etc/samba/smb.conf
+groupadd bckuser --gid 500
+adduser bckuser --uid 500 --gid 500 --no-create-home --shell /bin/false
+cd /etc/samba; smbpasswd -a bckuser           (bckpass)
+systemctl restart smb
+systemctl enable smb
+chown bckuser:bckuser /mnt/backup/hid/usb 
+
+# install de rdiff et xdelta
+yum install epel-release
+yum install librsync
+yum install xdelta
+# install de Borg
+yum -y install epel-release
+yum --enablerepo=epel-testing install python34-msgpack
+yum -y install borgbackup
+
+
+#
+#pour diagnostiquer les disques 
+smartctl -a /dev/sda
+# install des outils du RAID pour Dell
+wget -q -O - http://linux.dell.com/repo/hardware/latest/bootstrap.cgi | bash
+yum install srvadmin-all 
+/opt/dell/srvadmin/sbin/srvadmin-services.sh start
+https://hostname:1311/
+# Pour configurer les alerts 
+vi /opt/dell/srvadmin/bin/om-alert.sh
+
+#!/bin/bash
+HOST=`hostname`
+EMAIL="everadmin@everteam.com"
+#echo "There has been an OpenManage ALERT detected on $HOST.
+#$*
+#Please login to https://$HOST:1311/ to see details." | mail -s "DELL OM ALERT $HOST $*" $EMAIL
+/opt/dell/srvadmin/bin/omreport system alertlog | head -n25 | mail -s "DELL OM ALERT $HOST:1311 $*" $EMAIL
+
+chmod 755 /opt/dell/srvadmin/bin/om-alert.sh
+
+vi  /opt/dell/srvadmin/bin/DellAlert.sh
+
+#!/bin/bash
+for I in `/opt/dell/srvadmin/bin/omconfig system alertaction | sed 's/ *(.*)//; s/>.*//; s/.*[:<] *// ; s/|/ /g;'`; do
+echo $I;
+/opt/dell/srvadmin/bin/omconfig system alertaction event=$I alert=true broadcast=true execappath="/opt/dell/srvadmin/bin/om-alert.sh 'event=$I'"
+done
+
+chmod 755 /opt/dell/srvadmin/bin/DellAlert.sh
+/opt/dell/srvadmin/bin/DellAlert.sh
+
+
+#
+Installation de l'agent
+rpm -Uvh http://repo.zabbix.com/zabbix/2.2/rhel/7/x86_64/zabbix-release-2.2-1.el7.noarch.rpm
+
+yum install zabbix zabbix-agent zabbix-get
+vi /etc/zabbix/zabbix_agentd.conf
+            Server=zabbix.ever-team.com et #ServerActive=127.0.0.1
+systemctl start zabbix-agent
+systemctl enable zabbix-agent
+
+
+
+#
+Installation des Virtio Drivers pour windows
+wget https://fedorapeople.org/groups/virt/virtio-win/virtio-win.repo -O /etc/yum.repos.d/virtio-win.repo
+yum install virtio-win
+le CD iso se trouve sur /usr/share/virtio-win
+
+
+
+# Comment changer le clavier en fr
+loadkeys fr
+# passer en mode permanent
+localectl status
+localectl list-keymaps
+localectl set-keymap fr 
+# configuration réseau et hostname
+nmtui
+# Changer le time zone
+timedatectl list-timezones
+timedatectl set-timezone Europe/Paris
+ls -l /etc/localtime
+
+date
+hwclock   (pour configurer -w )
+
+
+font en cas de pb virt-manager
+yum install dejavu-lgc-sans-fonts
+
+
+
+
+pour le relay smtp
+Add a line to /etc/postfix/transport:
+* smtp:smtp.everteam.com
+generate a postmap file :
+postmap hash:/etc/postfix/transport
+To use the transport file, add or edit a line in /etc/postfix/main.cf:
+transport_maps = hash:/etc/postfix/transport
+
+
+# Pour diagnostiquer les disques autre methode:
+
+#!/bin/bash
+
+# install the tools if MegaCli64 is not found
+if [ ! -f "/opt/MegaRAID/MegaCli/MegaCli64" ]; then
+    cd /root
+    wget http://www.ipfusions.com/setup/MegaCli-8.07.07-1.noarch.rpm
+    rpm -Uvh MegaCli-8.07.07-1.noarch.rpm
+fi
+
+if [ ! -z "`/opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aALL |grep State | awk '{print $3}'| grep -v Optimal`" ]; then
+   echo "HW RAID Degraded.."
+   /opt/MegaRAID/MegaCli/MegaCli64 -LDInfo -LALL -aALL |mail -s "Alerte `hostname` Raid Critique" everadmin@everteam.com
+
+fi
+
+#Pour lister et verifier les disques
+#/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll | grep "Predictive Failure Count"
+# Pour verifier le disque 0
+#smartctl -d megaraid,0 -a /dev/sda
+# verification de la batterie
+#/opt/MegaRAID/MegaCli/MegaCli64 -AdpBbuCmd -aAll
+
+
+
+
+

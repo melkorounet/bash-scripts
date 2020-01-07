@@ -7,7 +7,7 @@
 
 if [[ -z "$1" ]]; then echo "Usage $0 {prerequisite|setup|help}"; exit 1; fi
 #On verifie que la machine n'est pas déjà dans le domaine
-if [[ "$domain" = "$(realm list --name-only)" ]]; then echo "The machine is already in $domain domain"; exit 1; fi
+#if [[ "$domain" = "$(realm list --name-only)" ]]; then echo "The machine is already in $domain domain"; exit 1; fi
 if [[ "root" != "$(whoami)" ]]; then echo "Please run $0 as root." && exit 1; fi
 #On verifie que le hostname est =< 15 caractères
 if [[ ${#H} -gt 15 ]]; then echo "Hostname must be less than 15 character, please change it using nmtui"; exit 1; fi
@@ -31,7 +31,7 @@ help() {
 
 prerequisite() {
 
-#yum -y install $PKG
+yum -y install $PKG
 sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
 sed -i 's/SELINUX=permissive/SELINUX=disabled/g' /etc/selinux/config
 systemctl stop firewalld
@@ -40,7 +40,7 @@ systemctl enable ntpd
 systemctl start ntpd
 yum -y update
 
-tput setaf1; echo "Please reboot the machine before launching the setup option"; tput sgr0
+echo "Please reboot the machine before launching the setup option"
 }
 
 setup() {
@@ -48,7 +48,7 @@ setup() {
 if [[ "" = $(pgrep ntpd) ]]; then systemctl start ntpd && systemctl status ntpd; fi
 realm join --user=administrator $domain
 
-sleep 30
+sleep 2
 
 sed -i "s/ldap_id_mapping = True/ldap_id_mapping = False/g" /etc/sssd/sssd.conf
 sed -i "s/use_fully_qualified_names = True/use_fully_qualified_names = False/g" /etc/sssd/sssd.conf
